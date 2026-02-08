@@ -24,7 +24,7 @@ from sse_starlette.sse import EventSourceResponse
 # ---------------------------------------------------------------------------
 
 WHALE_URL = os.getenv("WHALE_URL", "http://192.168.0.99")
-HEPH_API = f"{WHALE_URL}:8000"
+HEPH_API = f"{WHALE_URL}:8080"
 STATIC_DIR = os.getenv("STATIC_DIR", str(Path(__file__).parent.parent / "out"))
 AGENT_LOG_FILE = os.getenv("AGENT_LOG_FILE", str(Path(__file__).parent / "agent_feed.jsonl"))
 
