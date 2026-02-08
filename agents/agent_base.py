@@ -27,7 +27,7 @@ HF_TOKEN = os.getenv("HF_TOKEN", "")
 HF_INFERENCE_URL = "https://router.huggingface.co/hf-inference/models"
 
 # Heph API on whale
-HEPH_API = os.getenv("HEPH_API", "http://192.168.0.99:8000")
+HEPH_API = os.getenv("HEPH_API", "http://192.168.0.99:8080")
 
 
 def log_action(agent: str, action: str, detail: str, card_id: str | None = None):
@@ -124,4 +124,16 @@ async def fetch_heph(path: str) -> dict | list | None:
                 return r.json()
     except Exception as e:
         logger.debug(f"Heph fetch {path}: {e}")
+    return None
+
+
+async def post_heph(path: str, body: dict | None = None) -> dict | None:
+    """POST to Heph API."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(f"{HEPH_API}{path}", json=body or {})
+            if r.status_code == 200:
+                return r.json()
+    except Exception as e:
+        logger.debug(f"Heph post {path}: {e}")
     return None

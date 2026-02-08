@@ -1,11 +1,12 @@
 """
 Lead Qualifier Agent — SwarmTrenches
 
-Runs continuously on swarmrails, checks for new pain claims every 5 minutes,
+Runs continuously on swarmrails, checks coffee cards every 5 minutes,
 scores them for broker relevance using local vLLM (Qwen 7B).
+Marks weak leads as "expired" so brokers only see real deals.
 
 Usage:
-    python -m agents.qualifier
+    python qualifier.py
 """
 
 import asyncio
@@ -14,7 +15,7 @@ import logging
 import os
 from pathlib import Path
 
-from agent_base import chat_local, fetch_heph, log_action
+from agent_base import chat_local, fetch_heph, log_action, post_heph
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,7 +26,7 @@ logger = logging.getLogger("trenches.qualifier")
 INTERVAL = int(os.getenv("QUALIFIER_INTERVAL", "300"))  # 5 min default
 SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "qualify_claim.txt").read_text()
 
-# Track which claims we've already processed
+# Track which cards we've already processed
 SEEN_FILE = Path(__file__).parent / ".qualifier_seen.json"
 
 
@@ -40,151 +41,138 @@ def load_seen() -> set[str]:
 
 def save_seen(seen: set[str]):
     try:
-        SEEN_FILE.write_text(json.dumps(list(seen)[-5000:]))  # Keep last 5000
+        SEEN_FILE.write_text(json.dumps(list(seen)[-5000:]))
     except Exception as e:
         logger.error(f"Save seen error: {e}")
 
 
-async def qualify_claims():
-    """Fetch recent pain claims and qualify them."""
+async def qualify_cards():
+    """Fetch fresh coffee cards and qualify them with local LLM."""
     seen = load_seen()
 
-    # Get today's coffee cards to see what's already been processed
-    cards = await fetch_heph("/api/coffee/today?limit=100")
-    if not cards:
+    # Get all fresh cards
+    cards = await fetch_heph("/api/coffee/today?limit=50")
+    if not cards or not isinstance(cards, list):
         logger.info("No cards from Heph — API may be down")
         return
 
-    existing_ids = set()
-    if isinstance(cards, list):
-        for c in cards:
-            # Extract claim IDs from each card
-            try:
-                claim_ids = json.loads(c.get("pain_claim_ids", "[]"))
-                existing_ids.update(claim_ids)
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-    # Get recent pain claims from Heph stats
-    stats = await fetch_heph("/api/coffee/stats")
-    if not stats:
-        logger.info("No stats from Heph")
+    new_cards = [c for c in cards if c.get("id") not in seen]
+    if not new_cards:
+        logger.info(f"All {len(cards)} cards already qualified")
         return
 
-    graph_data = stats.get("graph", {})
-    total_claims = graph_data.get("total_claims", 0)
-    pain_claims = graph_data.get("pain_claims", 0)
+    logger.info(f"{len(new_cards)} new cards to qualify out of {len(cards)} total")
 
-    logger.info(
-        f"Pipeline: {total_claims} total claims, {pain_claims} pain, "
-        f"{len(existing_ids)} in cards, {len(seen)} previously qualified"
-    )
-
-    # Log qualification activity
     qualified = 0
+    rejected = 0
     priority = 0
 
-    # We don't have direct access to raw claims here — the qualifier
-    # works by checking if a brew would produce new cards
-    if pain_claims > len(existing_ids):
-        new_potential = pain_claims - len(existing_ids)
-        logger.info(f"{new_potential} potential new leads to qualify")
-
-        log_action(
-            agent="qualifier",
-            action="scan",
-            detail=f"Scanned pipeline: {new_potential} new pain signals detected, {pain_claims} total pain claims",
-        )
-
-        # If there are unprocessed claims, we could trigger a brew
-        # But we'll leave that to the broker (manual BREW button)
-        # Instead, just log the status
-        if new_potential >= 5:
-            log_action(
-                agent="qualifier",
-                action="recommend",
-                detail=f"Recommend BREW: {new_potential} unprocessed pain claims waiting",
-            )
-    else:
-        log_action(
-            agent="qualifier",
-            action="scan",
-            detail=f"Pipeline current: {len(existing_ids)} cards cover {pain_claims} pain claims",
-        )
-
-    # Qualify individual cards that haven't been scored by agent
-    for card in (cards if isinstance(cards, list) else []):
+    for card in new_cards:
         card_id = card.get("id", "")
-        if card_id in seen:
-            continue
-
-        # Use local LLM to assess the card
         pain = card.get("pain_summary", "")
         vertical = card.get("vertical", "unknown")
         score = card.get("tenant_score", 0)
+        pitch = card.get("pitch_angle", "")
 
         if not pain:
             seen.add(card_id)
             continue
 
+        # Ask local 7B to qualify
         result = await chat_local(
             system=SYSTEM_PROMPT,
-            user=f"Claim: {pain}\nVertical: {vertical}\nCurrent Score: {score}",
+            user=f"Pain claim: {pain}\nVertical: {vertical}\nTenant Score: {score}\nPitch: {pitch[:200]}",
             max_tokens=256,
-            temperature=0.2,
+            temperature=0.1,
         )
 
-        if result:
-            try:
-                # Try to parse JSON response
-                qualification = json.loads(result.strip())
-                is_closeable = qualification.get("is_closeable", "maybe")
-                urgency = qualification.get("urgency", "medium")
-                deal_signal = qualification.get("deal_signal", "")
+        if not result:
+            logger.warning(f"LLM returned nothing for card {card_id[:8]}")
+            continue
 
-                if is_closeable == "yes" and urgency in ("critical", "high"):
-                    priority += 1
-                    log_action(
-                        agent="qualifier",
-                        action="qualified",
-                        detail=f"PRIORITY: {pain[:60]} — {deal_signal[:80]}",
-                        card_id=card_id,
-                    )
-                elif is_closeable == "yes":
-                    qualified += 1
-                    log_action(
-                        agent="qualifier",
-                        action="qualified",
-                        detail=f"Qualified: {pain[:60]}",
-                        card_id=card_id,
-                    )
-                # Skip logging for non-closeable — too noisy
-            except json.JSONDecodeError:
-                logger.debug(f"Non-JSON response for card {card_id[:8]}")
+        try:
+            # Parse JSON response
+            # Handle potential markdown wrapping
+            text = result.strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1] if "\n" in text else text
+                text = text.rsplit("```", 1)[0] if "```" in text else text
+                text = text.strip()
+
+            qualification = json.loads(text)
+            is_closeable = qualification.get("is_closeable", "no")
+            urgency = qualification.get("urgency", "low")
+            deal_signal = qualification.get("deal_signal", "")
+
+            if is_closeable == "yes" and urgency in ("critical", "high"):
+                priority += 1
+                qualified += 1
+                log_action(
+                    agent="qualifier",
+                    action="priority",
+                    detail=f"PRIORITY LEAD: {pain[:50]} — {deal_signal[:60]}",
+                    card_id=card_id,
+                )
+                logger.info(f"  PRIORITY: {card_id[:8]} — {deal_signal[:60]}")
+
+            elif is_closeable == "yes":
+                qualified += 1
+                log_action(
+                    agent="qualifier",
+                    action="qualified",
+                    detail=f"Qualified: {pain[:50]} — {deal_signal[:60]}",
+                    card_id=card_id,
+                )
+                logger.info(f"  QUALIFIED: {card_id[:8]} — {deal_signal[:60]}")
+
+            elif is_closeable == "maybe":
+                qualified += 1
+                logger.info(f"  MAYBE: {card_id[:8]} — {deal_signal[:60]}")
+
+            else:
+                # Not closeable — expire the card so it doesn't clutter the board
+                rejected += 1
+                await post_heph(
+                    f"/api/coffee/{card_id}/status",
+                    {"status": "expired"},
+                )
+                log_action(
+                    agent="qualifier",
+                    action="rejected",
+                    detail=f"Rejected: {pain[:50]} — {deal_signal[:60]}",
+                    card_id=card_id,
+                )
+                logger.info(f"  REJECTED: {card_id[:8]} — {deal_signal[:60]}")
+
+        except json.JSONDecodeError:
+            logger.debug(f"Non-JSON response for card {card_id[:8]}: {result[:100]}")
 
         seen.add(card_id)
+        # Small delay between cards to not hammer vLLM
+        await asyncio.sleep(1)
 
     save_seen(seen)
 
-    if qualified or priority:
-        log_action(
-            agent="qualifier",
-            action="batch_complete",
-            detail=f"{priority} priority, {qualified} qualified leads this cycle",
-        )
+    summary = f"{priority} priority, {qualified} qualified, {rejected} rejected out of {len(new_cards)} cards"
+    logger.info(f"Cycle complete: {summary}")
+    log_action(
+        agent="qualifier",
+        action="cycle_complete",
+        detail=summary,
+    )
 
 
 async def main():
-    logger.info(f"Lead Qualifier starting — interval: {INTERVAL}s")
+    logger.info(f"Lead Qualifier starting — interval: {INTERVAL}s, vLLM: localhost:8000")
     log_action(
         agent="qualifier",
         action="startup",
-        detail=f"Lead Qualifier online — scanning every {INTERVAL}s",
+        detail=f"Lead Qualifier online — qualifying every {INTERVAL}s",
     )
 
     while True:
         try:
-            await qualify_claims()
+            await qualify_cards()
         except Exception as e:
             logger.error(f"Qualification cycle error: {e}")
         await asyncio.sleep(INTERVAL)
