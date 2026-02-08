@@ -10,6 +10,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'SWARMTRENCHES — Compute Broker War Room',
   description: 'ENS-gated showroom for compute brokers and AI agents. Close or starve.',
+  icons: { icon: '/favicon.ico' },
 };
 
 export default function RootLayout({
