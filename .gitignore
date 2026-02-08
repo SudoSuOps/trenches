@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+proxy/venv/
+agents/__pycache__/
+agents/.qualifier_seen.json
+agents/x_drafts.jsonl
+proxy/agent_feed.jsonl
+proxy/__pycache__/
+.env.local
+*.pyc
+.DS_Store

@@ -1,0 +1,205 @@
+@import "tailwindcss";
+
+/* ============================================
+   SWARMTRENCHES — War Room Design System
+   ============================================ */
+
+@theme {
+  --color-void: #000000;
+  --color-deep: #030303;
+  --color-surface: #0a0a0a;
+  --color-surface-light: #111111;
+  --color-border: #1a1a1a;
+  --color-border-light: #2a2a2a;
+  --color-muted: #555555;
+  --color-text: #cccccc;
+  --color-bright: #f0f0f0;
+
+  /* Trenches green glow */
+  --color-glow: #00ffaa;
+  --color-glow-dim: #00cc88;
+  --color-glow-bright: #33ffbb;
+
+  /* Tier colors */
+  --color-priority: #ff4444;
+  --color-growth: #ff8800;
+  --color-opportunistic: #00bbcc;
+  --color-avoid: #555555;
+
+  /* Accent */
+  --color-teal: #00d4aa;
+  --color-cyan: #00bbcc;
+  --color-emerald: #00c97b;
+  --color-amber: #ff8800;
+  --color-red: #ff4444;
+  --color-gold: #ffd700;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-void);
+  color: var(--color-text);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-glow) 20%, transparent);
+  color: var(--color-bright);
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-void);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+/* ============================================
+   GLOW UTILITIES
+   ============================================ */
+
+.glow-text {
+  text-shadow:
+    0 0 20px rgba(0, 255, 170, 0.5),
+    0 0 40px rgba(0, 255, 170, 0.2);
+}
+
+.glow-text-subtle {
+  text-shadow: 0 0 10px rgba(0, 255, 170, 0.3);
+}
+
+.glow-box {
+  box-shadow:
+    0 0 30px rgba(0, 255, 170, 0.1),
+    0 0 60px rgba(0, 255, 170, 0.03);
+}
+
+.glow-box-strong {
+  box-shadow:
+    0 0 20px rgba(0, 255, 170, 0.2),
+    0 0 40px rgba(0, 255, 170, 0.1),
+    0 0 80px rgba(0, 255, 170, 0.05);
+}
+
+.glow-border {
+  border-color: rgba(0, 255, 170, 0.2);
+}
+
+/* Tier glow variants */
+.glow-priority {
+  box-shadow: 0 0 12px rgba(255, 68, 68, 0.3), inset 0 0 12px rgba(255, 68, 68, 0.05);
+  border-color: rgba(255, 68, 68, 0.4);
+}
+
+.glow-growth {
+  box-shadow: 0 0 12px rgba(255, 136, 0, 0.3), inset 0 0 12px rgba(255, 136, 0, 0.05);
+  border-color: rgba(255, 136, 0, 0.4);
+}
+
+.glow-opportunistic {
+  box-shadow: 0 0 12px rgba(0, 187, 204, 0.3), inset 0 0 12px rgba(0, 187, 204, 0.05);
+  border-color: rgba(0, 187, 204, 0.4);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 255, 170, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(0, 255, 170, 0.5); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ticker-flash {
+  0% { color: var(--color-glow-bright); text-shadow: 0 0 12px rgba(0, 255, 170, 0.8); }
+  100% { color: var(--color-glow); text-shadow: none; }
+}
+
+@keyframes dot-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-breathe {
+  animation: breathe 3s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+.animate-ticker-flash {
+  animation: ticker-flash 0.6s ease-out;
+}
+
+.animate-dot-blink {
+  animation: dot-blink 1.5s ease-in-out infinite;
+}
+
+/* ============================================
+   PANEL STYLES
+   ============================================ */
+
+.trench-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.trench-panel-header {
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ============================================
+   REDUCED MOTION
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
