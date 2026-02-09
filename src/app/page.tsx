@@ -3,17 +3,19 @@
 import { WalletGate } from '@/components/WalletGate';
 import { TrenchNav } from '@/components/TrenchNav';
 import { PipelineBanner } from '@/components/PipelineBanner';
+import { MarketTemperature } from '@/components/MarketTemperature';
 import { LeadBoard } from '@/components/LeadBoard';
 import { AgentFeed } from '@/components/AgentFeed';
 import { useTrenchData } from '@/lib/hooks';
 
 function Showroom({ ensName, onDisconnect }: { ensName: string; onDisconnect: () => void }) {
-  const { connected, cards, stats, agents, loading } = useTrenchData();
+  const { connected, cards, stats, agents, trends, loading } = useTrenchData();
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-void)]">
       <TrenchNav ensName={ensName} connected={connected} onDisconnect={onDisconnect} />
       <PipelineBanner cards={cards} stats={stats} />
+      <MarketTemperature trends={trends} />
 
       {loading && cards.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">

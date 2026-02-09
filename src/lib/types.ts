@@ -32,6 +32,11 @@ export interface CoffeeCard {
   status: CardStatus;
   expires_at: string | null;
   deal_id?: number | null;
+  // Market intelligence (Pain Trend Engine)
+  demand_volume?: number;
+  trend_momentum?: number;
+  solvability?: string | null;
+  market_action?: string | null;
 }
 
 export interface CoffeeStats {
@@ -71,9 +76,41 @@ export interface XDraft {
   created_at: string;
 }
 
+export interface PainTrend {
+  pain_type: string;
+  vertical: string;
+  signal_count: number;
+  velocity: number;
+  momentum: number;
+  composite_score: number;
+  is_emerging: boolean;
+  solvable_by_swarm: boolean;
+  solvability_detail: string;
+  market_action: string;
+  avg_confidence: number;
+  top_claims: string[];
+}
+
+export interface VerticalHeat {
+  vertical: string;
+  signal_count: number;
+  velocity: number;
+  momentum: number;
+  heat: 'hot' | 'warm' | 'cool' | 'cold';
+}
+
+export interface TrendSnapshot {
+  trends: PainTrend[];
+  verticals: Record<string, VerticalHeat>;
+  fleet_coverage: number;
+  window_days: number;
+  generated_at: string;
+}
+
 export interface SSEPayload {
   timestamp: string;
   cards: CoffeeCard[];
   stats: CoffeeStats;
   agents: AgentAction[];
+  trends?: TrendSnapshot;
 }

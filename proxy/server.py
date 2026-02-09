@@ -219,6 +219,43 @@ async def trenches_stats():
 
 
 # ---------------------------------------------------------------------------
+# Trend endpoints — proxy to Heph Pain Trend Engine
+# ---------------------------------------------------------------------------
+
+@app.get("/api/trenches/trends")
+async def trenches_trends(request: Request, window: int = 14, vertical: str | None = None, limit: int = 20):
+    """Get pain trends — proxy to Heph /api/coffee/trends."""
+    logger.info(f"TRENDS HIT from {request.client.host}: window={window} vertical={vertical} limit={limit}")
+    cache_key = f"trends_{vertical}_{window}_{limit}"
+    cached = _get_cached(cache_key, 60)
+    if cached:
+        return cached
+
+    params = f"?window={window}&limit={limit}"
+    if vertical:
+        params += f"&vertical={vertical}"
+
+    data = await _fetch_json(f"{HEPH_API}/api/coffee/trends{params}")
+    result = data if data else {}
+    _set_cache(cache_key, result)
+    return result
+
+
+@app.get("/api/trenches/trends/{vertical}")
+async def trenches_trends_vertical(vertical: str, window: int = 14, limit: int = 20):
+    """Get per-vertical trends."""
+    cache_key = f"trends_v_{vertical}_{window}_{limit}"
+    cached = _get_cached(cache_key, 60)
+    if cached:
+        return cached
+
+    data = await _fetch_json(f"{HEPH_API}/api/coffee/trends/{vertical}?window={window}&limit={limit}")
+    result = data if data else {}
+    _set_cache(cache_key, result)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Agent endpoints
 # ---------------------------------------------------------------------------
 
@@ -275,9 +312,10 @@ async def trenches_stream(request: Request):
             if await request.is_disconnected():
                 break
 
-            cards, stats = await asyncio.gather(
+            cards, stats, trends = await asyncio.gather(
                 _fetch_json(f"{HEPH_API}/api/coffee/today?limit=50"),
                 _fetch_json(f"{HEPH_API}/api/coffee/stats"),
+                _fetch_json(f"{HEPH_API}/api/coffee/trends?limit=5"),
             )
 
             payload = {
@@ -285,6 +323,7 @@ async def trenches_stream(request: Request):
                 "cards": cards if cards else [],
                 "stats": stats if stats else {},
                 "agents": _read_agent_feed(10),
+                "trends": trends if trends else {},
             }
 
             yield {"event": "trenches", "data": json.dumps(payload)}
@@ -307,31 +346,68 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
+# Apedia dashboard passthrough (forwards to local :8090 proxy)
+# ---------------------------------------------------------------------------
+
+APEDIA_PROXY = "http://127.0.0.1:8090"
+
+@app.get("/api/apedia/{path:path}")
+async def apedia_passthrough(path: str, request: Request):
+    """Forward /api/apedia/* to the apedia dashboard proxy."""
+    cached = _get_cached(f"apedia:{path}", 10)
+    if cached:
+        return cached
+
+    url = f"{APEDIA_PROXY}/api/dashboard/{path}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(url)
+            if r.status_code == 200:
+                data = r.json()
+                _set_cache(f"apedia:{path}", data)
+                return data
+    except Exception as e:
+        logger.warning(f"Apedia proxy: {e}")
+    return JSONResponse({"error": "apedia proxy unreachable"}, status_code=502)
+
+
+# ---------------------------------------------------------------------------
 # Static file serving (Next.js export)
+# Mount _next/ assets separately so the catch-all doesn't hijack API routes
 # ---------------------------------------------------------------------------
 
 static_path = Path(STATIC_DIR)
-if static_path.exists() and static_path.is_dir():
+_next_dir = static_path / "_next"
+
+if _next_dir.exists() and _next_dir.is_dir():
     from fastapi.staticfiles import StaticFiles
+    app.mount("/_next", StaticFiles(directory=str(_next_dir)), name="next_assets")
 
-    @app.get("/")
-    async def serve_index():
-        index = static_path / "index.html"
-        if index.exists():
-            return FileResponse(str(index), media_type="text/html")
-        return JSONResponse(
-            {"error": "Not built yet. Run: cd .. && npm run build"},
-            status_code=404,
-        )
+@app.get("/")
+async def serve_index():
+    index = static_path / "index.html"
+    if index.exists():
+        return FileResponse(str(index), media_type="text/html")
+    return JSONResponse(
+        {"error": f"Static dir not found: {STATIC_DIR}. Run: cd .. && npm run build"},
+        status_code=404,
+    )
 
-    app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
-else:
-    @app.get("/")
-    async def no_build():
-        return JSONResponse(
-            {"error": f"Static dir not found: {STATIC_DIR}. Run: cd .. && npm run build"},
-            status_code=404,
-        )
+@app.get("/{path:path}")
+async def serve_static_or_404(path: str):
+    """Serve static files from out/ — catch-all AFTER all API routes."""
+    candidate = static_path / path
+    if candidate.exists() and candidate.is_file():
+        return FileResponse(str(candidate))
+    # Try .html extension (Next.js static export)
+    html_candidate = static_path / f"{path}.html"
+    if html_candidate.exists():
+        return FileResponse(str(html_candidate), media_type="text/html")
+    # SPA fallback — serve index.html
+    index = static_path / "index.html"
+    if index.exists():
+        return FileResponse(str(index), media_type="text/html")
+    return JSONResponse({"error": "Not found"}, status_code=404)
 
 
 # ---------------------------------------------------------------------------

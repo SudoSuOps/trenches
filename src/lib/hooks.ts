@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchTrenches } from './api';
-import type { CoffeeCard, CoffeeStats, AgentAction, SSEPayload } from './types';
+import type { CoffeeCard, CoffeeStats, AgentAction, SSEPayload, TrendSnapshot } from './types';
 
 // ---------------------------------------------------------------------------
 // Generic polling hook
@@ -94,12 +94,16 @@ export function useTrenchData() {
   const { data: agentFeed } = usePolling<AgentAction[]>(
     '/api/trenches/agents/feed', connected ? 120000 : 15000
   );
+  const { data: trends } = usePolling<TrendSnapshot>(
+    '/api/trenches/trends?limit=10', connected ? 120000 : 60000
+  );
 
   return {
     connected,
     cards: sseData?.cards ?? cards ?? [],
     stats: sseData?.stats ?? stats ?? null,
     agents: sseData?.agents ?? agentFeed ?? [],
+    trends: sseData?.trends ?? trends ?? null,
     loading: cardsLoading,
     timestamp: sseData?.timestamp ?? null,
   };

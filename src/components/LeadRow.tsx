@@ -58,8 +58,15 @@ export function LeadRow({ card, expanded, onClick }: LeadRowProps) {
       </div>
 
       {/* Status indicator */}
-      <div className="text-[0.5rem] tracking-wider text-[var(--color-muted)] uppercase">
-        {card.status}
+      <div className="flex items-center gap-1">
+        {card.solvability && (
+          <span className="text-[0.4rem] px-1 py-px rounded bg-green-900/50 text-green-400 font-bold tracking-wider">
+            SOLVE
+          </span>
+        )}
+        <span className="text-[0.5rem] tracking-wider text-[var(--color-muted)] uppercase">
+          {card.status}
+        </span>
       </div>
     </div>
   );
